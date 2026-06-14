@@ -74,6 +74,10 @@ function App() {
   const [activeStage, setActiveStage] = useState(null)
   const [selectedJob, setSelectedJob] = useState(null)
   const [cvDraft, setCvDraft] = useState("")
+  const [emailText, setEmailText] = useState("")
+  const [showEmailInput, setShowEmailInput] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [emailResult, setEmailResult] = useState(null) // { suggestedStage, reason, signals }
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
@@ -166,6 +170,67 @@ ${jobText}${cvContext}`
   function closeRole(id) {
     updateJob(id, { stage: "Closed" })
     setSelectedJob(null)
+  }
+
+  async function parseEmail(job) {
+    if (!emailText.trim()) return
+    setEmailLoading(true)
+    setEmailResult(null)
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 800,
+          messages: [{
+            role: "user",
+            content: `You are analysing a recruiter or hiring email for a job application.
+
+Current role: ${job.role} at ${job.company}
+Current stage: ${job.stage}
+Available stages: Applied, Screen, Interview, Final, Offer, Closed
+
+Email:
+${emailText}
+
+Return ONLY valid JSON:
+{
+  "suggestedStage": "one of the available stages, or null if unclear",
+  "reason": "one sentence explaining why this stage",
+  "signals": "2-3 bullet points of useful signals from the email — feedback, next steps, tone, timeline, anything relevant. Use \\n to separate bullets."
+}`
+          }]
+        })
+      })
+      const data = await res.json()
+      const text = data.content[0].text
+      const clean = text.replace(/```json|```/g, "").trim()
+      setEmailResult(JSON.parse(clean))
+    } catch (e) {
+      alert("Something went wrong parsing the email. Try again.")
+      console.error(e)
+    }
+    setEmailLoading(false)
+  }
+
+  function applyEmailResult(job) {
+    if (!emailResult) return
+    const updates = {}
+    if (emailResult.suggestedStage) updates.stage = emailResult.suggestedStage
+    if (emailResult.signals) {
+      const existing = job.userNotes ? job.userNotes + "\n\n" : ""
+      updates.userNotes = existing + `Email signals (${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}):\n${emailResult.signals}`
+    }
+    updateJob(job.id, updates)
+    setShowEmailInput(false)
+    setEmailText("")
+    setEmailResult(null)
   }
 
   const filtered = activeStage
@@ -417,6 +482,83 @@ ${jobText}${cvContext}`
                   placeholder="Paste your cover letter or key application points here..."
                   multiline
                 />
+              </div>
+
+              {/* Email parser */}
+              <div className="border-t border-[#E8E8E4] mt-5 pt-5">
+                {!showEmailInput ? (
+                  <button
+                    onClick={() => { setShowEmailInput(true); setEmailResult(null) }}
+                    className="text-xs text-[#8A8A8A] hover:text-[#111] transition-colors border border-[#E8E8E4] rounded-lg px-3 py-2 hover:border-[#111]"
+                  >
+                    + Update from email
+                  </button>
+                ) : (
+                  <div>
+                    <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] block mb-2">Paste recruiter email</span>
+                    <textarea
+                      value={emailText}
+                      onChange={e => setEmailText(e.target.value)}
+                      placeholder="Paste the email here..."
+                      autoFocus
+                      rows={5}
+                      className="w-full text-sm border border-[#E8E8E4] rounded-lg p-3 resize-none focus:outline-none focus:border-[#111] transition-colors mb-3"
+                    />
+
+                    {/* Email result */}
+                    {emailResult && (
+                      <div className="bg-[#F7F7F5] rounded-lg p-4 mb-3">
+                        {emailResult.suggestedStage && (
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]">Suggested stage</span>
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${STAGE_COLORS[emailResult.suggestedStage] || "bg-stone-100 text-stone-600"}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                              {emailResult.suggestedStage}
+                            </span>
+                            <span className="text-xs text-[#8A8A8A]">— {emailResult.reason}</span>
+                          </div>
+                        )}
+                        {emailResult.signals && (
+                          <div>
+                            <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] block mb-1.5">Signals</span>
+                            {emailResult.signals.split("\n").filter(Boolean).map((s, i) => (
+                              <p key={i} className="text-xs text-[#333] mb-1">• {s.replace(/^•\s*/, "")}</p>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => applyEmailResult(selectedJob)}
+                          className="mt-3 bg-[#111] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#333] transition-colors"
+                        >
+                          Apply update
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      {!emailResult && (
+                        <button
+                          onClick={() => parseEmail(selectedJob)}
+                          disabled={emailLoading || !emailText.trim()}
+                          className="bg-[#111] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-2"
+                        >
+                          {emailLoading ? (
+                            <>
+                              <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Analysing...
+                            </>
+                          ) : "Analyse with Claude"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setShowEmailInput(false); setEmailText(""); setEmailResult(null) }}
+                        className="text-xs text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Footer actions */}
