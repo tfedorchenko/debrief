@@ -147,6 +147,7 @@ ${jobText}`
 
           {/* SIDEBAR STATS */}
           <div className="border-t border-[#E8E8E4] p-4 mt-auto">
+            <img src="/horse.png" alt="" className="w-10 mb-3 opacity-70" />
             <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-2">Stats</p>
             <div className="flex justify-between items-baseline py-1">
               <span className="font-mono text-[10px] text-[#8A8A8A]">Active</span>
@@ -184,7 +185,7 @@ ${jobText}`
           {/* JOBS TABLE */}
           {jobs.length === 0 ? (
             <div className="bg-white border border-[#E8E8E4] rounded-lg shadow-sm flex flex-col items-center justify-center py-20 text-center">
-              <p className="text-2xl mb-2">🐴</p>
+              <img src="/horse.png" alt="Debrief horse" className="w-24 mb-4" />
               <p className="font-semibold text-[#111] mb-1">No roles yet</p>
               <p className="text-sm text-[#8A8A8A] mb-4">Paste a job posting and Claude will extract everything</p>
               <button
