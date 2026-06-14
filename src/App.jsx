@@ -61,6 +61,21 @@ function EditableField({ label, value, onChange, placeholder = "—", multiline 
   )
 }
 
+// Tooltip component
+function Tooltip({ text, children }) {
+  const [visible, setVisible] = useState(false)
+  return (
+    <span className="relative inline-flex items-center" onMouseEnter={() => setVisible(true)} onMouseLeave={() => setVisible(false)}>
+      {children}
+      {visible && (
+        <span className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-48 bg-[#111] text-white text-[10px] rounded-md px-2.5 py-1.5 z-50 leading-relaxed pointer-events-none">
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function App() {
   const [jobs, setJobs] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [] }
@@ -129,7 +144,8 @@ function App() {
   "location": "location or Remote",
   "url": null,
   "notes": "1-2 sentences on what kind of PM they actually want and key signals from the posting",
-  "fitSignal": "one of: Strong fit, Good fit, Partial fit, Unclear — based on candidate CV if provided"
+  "fitSignal": "one of: Strong fit, Good fit, Partial fit, Unclear — based on candidate CV if provided",
+  "fitReason": "one sentence explaining the fit assessment, or null if no CV provided"
 }
 
 Job posting:
@@ -262,7 +278,7 @@ Return ONLY valid JSON:
             onClick={() => { setShowProfile(true); setCvDraft(cvText) }}
             className="text-xs text-[#8A8A8A] px-3 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors border border-[#E8E8E4]"
           >
-            {cvText ? "✓ Profile" : "Add CV"}
+            {cvText ? "✓ Profile" : "Profile"}
           </button>
           <button
             onClick={() => setShowModal(true)}
@@ -364,9 +380,13 @@ Return ONLY valid JSON:
           ) : (
             <div className="bg-white border border-[#E8E8E4] rounded-lg shadow-sm overflow-hidden">
               <div className="grid gap-4 px-5 py-2.5 bg-[#F7F7F5] border-b border-[#E8E8E4]" style={{ gridTemplateColumns: "2fr 0.6fr 0.9fr 0.9fr 0.6fr 80px" }}>
-                {["Role", "Type", "Salary", "Stage", "Fit", ""].map(h => (
+                {["Role", "Type", "Salary", "Stage"].map(h => (
                   <span key={h} className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]">{h}</span>
                 ))}
+                <Tooltip text="Claude's assessment of how well this role matches your CV. Add your CV via Profile to enable.">
+                  <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]">Fit</span>
+                </Tooltip>
+                <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]"></span>
               </div>
               {allFiltered.map(job => (
                 <div
@@ -449,6 +469,23 @@ Return ONLY valid JSON:
                   placeholder="Paste link"
                 />
               </div>
+
+              {/* Fit signal */}
+              {selectedJob.fitSignal && (
+                <div className="flex items-start gap-3 bg-[#F7F7F5] rounded-lg p-3 mb-5">
+                  <div>
+                    <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] block mb-1">Fit assessment</span>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${STAGE_COLORS[selectedJob.fitSignal] || "bg-stone-100 text-stone-600"}`}>
+                        {selectedJob.fitSignal}
+                      </span>
+                      <span className="text-xs text-[#8A8A8A]">
+                        {selectedJob.fitReason || "Re-add this role with a CV loaded to see the full assessment."}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Role signal */}
               {selectedJob.notes && (
