@@ -14,7 +14,14 @@ const STAGE_COLORS = {
   Closed: "bg-red-50 text-red-400",
 }
 
-// Inline editable field component
+const API_HEADERS = {
+  "Content-Type": "application/json",
+  "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+  "anthropic-version": "2023-06-01",
+  "anthropic-dangerous-direct-browser-access": "true",
+}
+
+// ── Inline editable field ──────────────────────────────────────────────────
 function EditableField({ label, value, onChange, placeholder = "—", multiline = false, mono = false }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value || "")
@@ -61,7 +68,7 @@ function EditableField({ label, value, onChange, placeholder = "—", multiline 
   )
 }
 
-// Tooltip component
+// ── Tooltip ────────────────────────────────────────────────────────────────
 function Tooltip({ text, children }) {
   const [visible, setVisible] = useState(false)
   return (
@@ -76,6 +83,215 @@ function Tooltip({ text, children }) {
   )
 }
 
+// ── Debrief Panel ─────────────────────────────────────────────────────────
+function DebriefPanel({ job, updateJob }) {
+  const [showTranscript, setShowTranscript] = useState(false)
+  const [transcriptText, setTranscriptText] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function runDebrief() {
+    if (!transcriptText.trim()) return
+    setLoading(true)
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1500,
+          messages: [{
+            role: "user",
+            content: `You are an expert interview coach analysing an interview transcript for a PM job seeker.
+
+Role: ${job.role} at ${job.company}
+Stage: ${job.stage}
+${job.notes ? `Role signal: ${job.notes}` : ""}
+
+Transcript:
+${transcriptText.slice(0, 6000)}
+
+Return ONLY valid JSON — no preamble, no markdown:
+{
+  "score": 7.5,
+  "scoreReason": "one sentence summary of overall performance",
+  "wentWell": ["specific thing that went well", "another strength"],
+  "improve": ["specific thing to improve with actionable advice", "another area"],
+  "salarySignal": "any salary signals from the conversation, or null",
+  "roleSignal": "updated understanding of what they actually want in this PM role, or null",
+  "suggestedStage": "one of: Screen, Interview, Final, Offer, Closed — based on what the transcript reveals about where this is heading, or null if unclear",
+  "stageReason": "one sentence explaining the stage suggestion, or null"
+}`
+          }]
+        })
+      })
+      const data = await res.json()
+      const text = data.content[0].text
+      const clean = text.replace(/```json|```/g, "").trim()
+      const result = JSON.parse(clean)
+
+      // Save debrief result + transcript to job
+      updateJob(job.id, {
+        debrief: result,
+        transcriptSnippet: transcriptText.slice(0, 200) + "…",
+        debriefDate: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
+      })
+      setShowTranscript(false)
+      setTranscriptText("")
+    } catch (e) {
+      alert("Something went wrong running the debrief. Try again.")
+      console.error(e)
+    }
+    setLoading(false)
+  }
+
+  // ── Already have a debrief ──
+  if (job.debrief) {
+    const d = job.debrief
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <div className="text-center">
+              <span className="text-2xl font-bold tracking-tight text-[#111]">{d.score}</span>
+              <span className="text-sm text-[#C4C4BE]">/10</span>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-[#111]">{d.scoreReason}</p>
+              {job.debriefDate && <p className="font-mono text-[10px] text-[#C4C4BE]">Debrief · {job.debriefDate}</p>}
+            </div>
+          </div>
+          <button
+            onClick={() => { updateJob(job.id, { debrief: null, transcriptSnippet: null, debriefDate: null }); setShowTranscript(false) }}
+            className="text-xs text-[#C4C4BE] hover:text-[#8A8A8A] transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {d.wentWell?.map((item, i) => (
+            <div key={i} className="rounded-lg p-2.5 bg-green-50 border-l-2 border-green-400">
+              <p className="font-mono text-[9px] tracking-widest uppercase text-green-600 mb-1">Went well</p>
+              <p className="text-xs text-[#333] leading-relaxed">{item}</p>
+            </div>
+          ))}
+          {d.improve?.map((item, i) => (
+            <div key={i} className="rounded-lg p-2.5 bg-red-50 border-l-2 border-[#D63C2A]">
+              <p className="font-mono text-[9px] tracking-widest uppercase text-[#D63C2A] mb-1">Improve</p>
+              <p className="text-xs text-[#333] leading-relaxed">{item}</p>
+            </div>
+          ))}
+        </div>
+
+        {(d.salarySignal || d.roleSignal) && (
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {d.salarySignal && (
+              <div className="rounded-lg p-2.5 bg-[#F7F7F5] border border-[#E8E8E4]">
+                <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-1">Salary signal</p>
+                <p className="text-xs text-[#333] leading-relaxed">{d.salarySignal}</p>
+              </div>
+            )}
+            {d.roleSignal && (
+              <div className="rounded-lg p-2.5 bg-[#F7F7F5] border border-[#E8E8E4]">
+                <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-1">Role signal</p>
+                <p className="text-xs text-[#333] leading-relaxed">{d.roleSignal}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {d.suggestedStage && (
+          <div className="flex items-center gap-2 text-xs text-[#8A8A8A]">
+            <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]">Stage signal</span>
+            <span className="font-medium text-[#111]">{d.suggestedStage}</span>
+            {d.stageReason && <span>— {d.stageReason}</span>}
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowTranscript(true)}
+          className="mt-3 text-xs text-[#8A8A8A] hover:text-[#111] transition-colors border border-[#E8E8E4] rounded-lg px-3 py-2 hover:border-[#111]"
+        >
+          + Run new debrief
+        </button>
+
+        {showTranscript && (
+          <TranscriptInput
+            transcriptText={transcriptText}
+            setTranscriptText={setTranscriptText}
+            loading={loading}
+            onRun={runDebrief}
+            onCancel={() => { setShowTranscript(false); setTranscriptText("") }}
+          />
+        )}
+      </div>
+    )
+  }
+
+  // ── No debrief yet ──
+  return (
+    <div>
+      {!showTranscript ? (
+        <button
+          onClick={() => setShowTranscript(true)}
+          className="text-xs text-[#8A8A8A] hover:text-[#111] transition-colors border border-[#E8E8E4] rounded-lg px-3 py-2 hover:border-[#111]"
+        >
+          + Run interview debrief
+        </button>
+      ) : (
+        <TranscriptInput
+          transcriptText={transcriptText}
+          setTranscriptText={setTranscriptText}
+          loading={loading}
+          onRun={runDebrief}
+          onCancel={() => { setShowTranscript(false); setTranscriptText("") }}
+        />
+      )}
+    </div>
+  )
+}
+
+function TranscriptInput({ transcriptText, setTranscriptText, loading, onRun, onCancel }) {
+  return (
+    <div className="mt-3">
+      <span className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] block mb-2">
+        Paste interview transcript
+      </span>
+      <p className="text-xs text-[#8A8A8A] mb-2">
+        Copy from Granola (open meeting → Share → Copy transcript) or paste from anywhere.
+      </p>
+      <textarea
+        value={transcriptText}
+        onChange={e => setTranscriptText(e.target.value)}
+        placeholder="Paste transcript here…"
+        autoFocus
+        rows={6}
+        className="w-full text-sm border border-[#E8E8E4] rounded-lg p-3 resize-none focus:outline-none focus:border-[#111] transition-colors mb-3"
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={onRun}
+          disabled={loading || !transcriptText.trim()}
+          className="bg-[#111] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-2"
+        >
+          {loading ? (
+            <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analysing…</>
+          ) : "Run debrief with Claude"}
+        </button>
+        <button onClick={onCancel} className="text-xs text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────
 function App() {
   const [jobs, setJobs] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [] }
@@ -92,7 +308,7 @@ function App() {
   const [emailText, setEmailText] = useState("")
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
-  const [emailResult, setEmailResult] = useState(null) // { suggestedStage, reason, signals }
+  const [emailResult, setEmailResult] = useState(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
@@ -102,7 +318,6 @@ function App() {
     localStorage.setItem(CV_STORAGE_KEY, cvText)
   }, [cvText])
 
-  // Sync selectedJob with jobs array so edits reflect immediately
   useEffect(() => {
     if (selectedJob) {
       const updated = jobs.find(j => j.id === selectedJob.id)
@@ -124,12 +339,7 @@ function App() {
 
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
+        headers: API_HEADERS,
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
@@ -195,12 +405,7 @@ ${jobText}${cvContext}`
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
+        headers: API_HEADERS,
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 800,
@@ -449,25 +654,9 @@ Return ONLY valid JSON:
 
               {/* Fields grid */}
               <div className="grid grid-cols-3 gap-5 mb-5">
-                <EditableField
-                  label="Salary"
-                  value={selectedJob.salary}
-                  onChange={val => updateJob(selectedJob.id, { salary: val })}
-                  placeholder="Not specified"
-                  mono
-                />
-                <EditableField
-                  label="Location"
-                  value={selectedJob.location}
-                  onChange={val => updateJob(selectedJob.id, { location: val })}
-                  placeholder="Not specified"
-                />
-                <EditableField
-                  label="Job URL"
-                  value={selectedJob.url}
-                  onChange={val => updateJob(selectedJob.id, { url: val })}
-                  placeholder="Paste link"
-                />
+                <EditableField label="Salary" value={selectedJob.salary} onChange={val => updateJob(selectedJob.id, { salary: val })} placeholder="Not specified" mono />
+                <EditableField label="Location" value={selectedJob.location} onChange={val => updateJob(selectedJob.id, { location: val })} placeholder="Not specified" />
+                <EditableField label="Job URL" value={selectedJob.url} onChange={val => updateJob(selectedJob.id, { url: val })} placeholder="Paste link" />
               </div>
 
               {/* Fit signal */}
@@ -490,39 +679,28 @@ Return ONLY valid JSON:
               {/* Role signal */}
               {selectedJob.notes && (
                 <div className="bg-[#F7F7F5] rounded-lg p-3 mb-5">
-                  <EditableField
-                    label="Role signal"
-                    value={selectedJob.notes}
-                    onChange={val => updateJob(selectedJob.id, { notes: val })}
-                    multiline
-                  />
+                  <EditableField label="Role signal" value={selectedJob.notes} onChange={val => updateJob(selectedJob.id, { notes: val })} multiline />
                 </div>
               )}
 
               {/* Notes */}
               <div className="mb-5">
-                <EditableField
-                  label="Your notes"
-                  value={selectedJob.userNotes}
-                  onChange={val => updateJob(selectedJob.id, { userNotes: val })}
-                  placeholder="Add notes, contacts, next steps..."
-                  multiline
-                />
+                <EditableField label="Your notes" value={selectedJob.userNotes} onChange={val => updateJob(selectedJob.id, { userNotes: val })} placeholder="Add notes, contacts, next steps..." multiline />
               </div>
 
               {/* Cover letter */}
-              <div className="border-t border-[#E8E8E4] pt-5">
-                <EditableField
-                  label="Cover letter / application notes"
-                  value={selectedJob.coverLetter}
-                  onChange={val => updateJob(selectedJob.id, { coverLetter: val })}
-                  placeholder="Paste your cover letter or key application points here..."
-                  multiline
-                />
+              <div className="border-t border-[#E8E8E4] pt-5 mb-5">
+                <EditableField label="Cover letter / application notes" value={selectedJob.coverLetter} onChange={val => updateJob(selectedJob.id, { coverLetter: val })} placeholder="Paste your cover letter or key application points here..." multiline />
+              </div>
+
+              {/* ── DEBRIEF SECTION ── */}
+              <div className="border-t border-[#E8E8E4] pt-5 mb-5">
+                <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-3">Interview debrief</p>
+                <DebriefPanel job={selectedJob} updateJob={updateJob} />
               </div>
 
               {/* Email parser */}
-              <div className="border-t border-[#E8E8E4] mt-5 pt-5">
+              <div className="border-t border-[#E8E8E4] pt-5">
                 {!showEmailInput ? (
                   <button
                     onClick={() => { setShowEmailInput(true); setEmailResult(null) }}
@@ -542,7 +720,6 @@ Return ONLY valid JSON:
                       className="w-full text-sm border border-[#E8E8E4] rounded-lg p-3 resize-none focus:outline-none focus:border-[#111] transition-colors mb-3"
                     />
 
-                    {/* Email result */}
                     {emailResult && (
                       <div className="bg-[#F7F7F5] rounded-lg p-4 mb-3">
                         {emailResult.suggestedStage && (
@@ -580,10 +757,7 @@ Return ONLY valid JSON:
                           className="bg-[#111] text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-2"
                         >
                           {emailLoading ? (
-                            <>
-                              <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                              Analysing...
-                            </>
+                            <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analysing…</>
                           ) : "Analyse with Claude"}
                         </button>
                       )}
@@ -600,19 +774,11 @@ Return ONLY valid JSON:
 
               {/* Footer actions */}
               <div className="border-t border-[#E8E8E4] mt-5 pt-4 flex items-center justify-between">
-                <button
-                  onClick={() => closeRole(selectedJob.id)}
-                  className="text-xs text-[#8A8A8A] hover:text-[#D63C2A] transition-colors"
-                >
+                <button onClick={() => closeRole(selectedJob.id)} className="text-xs text-[#8A8A8A] hover:text-[#D63C2A] transition-colors">
                   Close role
                 </button>
                 {selectedJob.url && (
-                  <a
-                    href={selectedJob.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-[#8A8A8A] hover:text-[#111] transition-colors underline underline-offset-2"
-                  >
+                  <a href={selectedJob.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[#8A8A8A] hover:text-[#111] transition-colors underline underline-offset-2">
                     View job posting ↗
                   </a>
                 )}
@@ -638,15 +804,10 @@ Return ONLY valid JSON:
                 className="w-full h-48 text-sm border border-[#E8E8E4] rounded-lg p-3 resize-none focus:outline-none focus:border-[#111] transition-colors"
                 autoFocus
               />
-              {cvText && (
-                <p className="text-[10px] text-[#8A8A8A] mt-2 font-mono">✓ CV loaded — Claude will assess fit</p>
-              )}
+              {cvText && <p className="text-[10px] text-[#8A8A8A] mt-2 font-mono">✓ CV loaded — Claude will assess fit</p>}
             </div>
             <div className="px-6 pb-6 flex justify-end gap-2">
-              <button
-                onClick={() => { setShowModal(false); setJobText("") }}
-                className="text-sm text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors"
-              >
+              <button onClick={() => { setShowModal(false); setJobText("") }} className="text-sm text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors">
                 Cancel
               </button>
               <button
@@ -655,10 +816,7 @@ Return ONLY valid JSON:
                 className="bg-[#111] text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#333] disabled:opacity-40 transition-colors flex items-center gap-2"
               >
                 {loading ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Extracting...
-                  </>
+                  <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Extracting…</>
                 ) : "Extract with Claude"}
               </button>
             </div>
@@ -683,21 +841,16 @@ Return ONLY valid JSON:
                 autoFocus
               />
               <p className="text-[10px] text-[#8A8A8A] mt-2 font-mono">Stored locally on your device only</p>
+
             </div>
             <div className="px-6 pb-6 flex justify-between items-center">
               {cvText && (
-                <button
-                  onClick={() => { setCvText(""); setCvDraft(""); setShowProfile(false) }}
-                  className="text-xs text-[#8A8A8A] hover:text-red-400 transition-colors"
-                >
+                <button onClick={() => { setCvText(""); setCvDraft(""); setShowProfile(false) }} className="text-xs text-[#8A8A8A] hover:text-red-400 transition-colors">
                   Clear CV
                 </button>
               )}
               <div className="flex gap-2 ml-auto">
-                <button
-                  onClick={() => setShowProfile(false)}
-                  className="text-sm text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors"
-                >
+                <button onClick={() => setShowProfile(false)} className="text-sm text-[#8A8A8A] px-4 py-2 rounded-lg hover:bg-[#F7F7F5] transition-colors">
                   Cancel
                 </button>
                 <button
