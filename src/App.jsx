@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import BriefingPanel from "./components/BriefingPanel"
 
 const STORAGE_KEY = "debrief_jobs"
 const CV_STORAGE_KEY = "debrief_cv"
@@ -134,7 +135,6 @@ Return ONLY valid JSON — no preamble, no markdown:
       const clean = text.replace(/```json|```/g, "").trim()
       const result = JSON.parse(clean)
 
-      // Save debrief result + transcript to job
       updateJob(job.id, {
         debrief: result,
         transcriptSnippet: transcriptText.slice(0, 200) + "…",
@@ -149,7 +149,6 @@ Return ONLY valid JSON — no preamble, no markdown:
     setLoading(false)
   }
 
-  // ── Already have a debrief ──
   if (job.debrief) {
     const d = job.debrief
     return (
@@ -233,7 +232,6 @@ Return ONLY valid JSON — no preamble, no markdown:
     )
   }
 
-  // ── No debrief yet ──
   return (
     <div>
       {!showTranscript ? (
@@ -309,6 +307,7 @@ function App() {
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailResult, setEmailResult] = useState(null)
+  const [briefingRole, setBriefingRole] = useState(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
@@ -382,10 +381,6 @@ ${jobText}${cvContext}`
       console.error(e)
     }
     setLoading(false)
-  }
-
-  function updateStage(id, stage) {
-    updateJob(id, { stage })
   }
 
   function deleteJob(id) {
@@ -639,16 +634,24 @@ Return ONLY valid JSON:
                     <p className="font-mono text-[10px] text-[#C4C4BE] mt-0.5">Added {selectedJob.added}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  {STAGES.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => updateJob(selectedJob.id, { stage: s })}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedJob.stage === s ? "bg-[#111] text-white border-[#111]" : "border-[#E8E8E4] text-[#8A8A8A] hover:border-[#111] hover:text-[#111]"}`}
-                    >
-                      {s}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <button
+                    onClick={() => setBriefingRole(selectedJob)}
+                    className="text-xs px-3 py-1.5 bg-[#D63C2A] text-white rounded-lg hover:bg-[#BF3525] transition-colors font-medium"
+                  >
+                    ✦ Brief
+                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {STAGES.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => updateJob(selectedJob.id, { stage: s })}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedJob.stage === s ? "bg-[#111] text-white border-[#111]" : "border-[#E8E8E4] text-[#8A8A8A] hover:border-[#111] hover:text-[#111]"}`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -693,7 +696,7 @@ Return ONLY valid JSON:
                 <EditableField label="Cover letter / application notes" value={selectedJob.coverLetter} onChange={val => updateJob(selectedJob.id, { coverLetter: val })} placeholder="Paste your cover letter or key application points here..." multiline />
               </div>
 
-              {/* ── DEBRIEF SECTION ── */}
+              {/* DEBRIEF SECTION */}
               <div className="border-t border-[#E8E8E4] pt-5 mb-5">
                 <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-3">Interview debrief</p>
                 <DebriefPanel job={selectedJob} updateJob={updateJob} />
@@ -719,7 +722,6 @@ Return ONLY valid JSON:
                       rows={5}
                       className="w-full text-sm border border-[#E8E8E4] rounded-lg p-3 resize-none focus:outline-none focus:border-[#111] transition-colors mb-3"
                     />
-
                     {emailResult && (
                       <div className="bg-[#F7F7F5] rounded-lg p-4 mb-3">
                         {emailResult.suggestedStage && (
@@ -748,7 +750,6 @@ Return ONLY valid JSON:
                         </button>
                       </div>
                     )}
-
                     <div className="flex gap-2">
                       {!emailResult && (
                         <button
@@ -841,7 +842,6 @@ Return ONLY valid JSON:
                 autoFocus
               />
               <p className="text-[10px] text-[#8A8A8A] mt-2 font-mono">Stored locally on your device only</p>
-
             </div>
             <div className="px-6 pb-6 flex justify-between items-center">
               {cvText && (
@@ -865,6 +865,15 @@ Return ONLY valid JSON:
           </div>
         </div>
       )}
+
+      {/* BRIEFING PANEL */}
+      {briefingRole && (
+        <BriefingPanel
+          role={briefingRole}
+          onClose={() => setBriefingRole(null)}
+        />
+      )}
+
     </div>
   )
 }
