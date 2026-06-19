@@ -288,7 +288,136 @@ function TranscriptInput({ transcriptText, setTranscriptText, loading, onRun, on
     </div>
   )
 }
+// ── Negotiation Intelligence ───────────────────────────────────────────────
+function NegotiationPanel({ job, allJobs, updateJob }) {
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(job.negotiation || null)
 
+  async function runNegotiation() {
+    setLoading(true)
+    setResult(null)
+    try {
+      const marketData = allJobs
+        .filter(j => j.id !== job.id && j.stage !== "Closed")
+        .map(j => {
+          const parts = [`${j.company} (${j.stage})`]
+          if (j.salary) parts.push(`stated salary: ${j.salary}`)
+          if (j.debrief?.salarySignal) parts.push(`salary signal: ${j.debrief.salarySignal}`)
+          return parts.join(" — ")
+        })
+        .filter(Boolean)
+
+      const competingOffers = allJobs.filter(j => j.id !== job.id && j.stage === "Offer")
+      const lateStageRoles = allJobs.filter(j => j.id !== job.id && (j.stage === "Final" || j.stage === "Interview"))
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
+          messages: [{
+            role: "user",
+            content: `You are an expert salary negotiation coach for product managers. Analyse this situation and return a negotiation brief.
+
+OFFER ROLE:
+Company: ${job.company}
+Role: ${job.role}
+Stated salary: ${job.salary || "not specified"}
+${job.debrief?.salarySignal ? `Salary signals from interviews: ${job.debrief.salarySignal}` : ""}
+${job.notes ? `Role signals: ${job.notes}` : ""}
+
+MARKET CONTEXT (other roles in pipeline):
+${marketData.length > 0 ? marketData.join("\n") : "No other active roles."}
+
+COMPETING OFFERS: ${competingOffers.length > 0 ? competingOffers.map(j => j.company).join(", ") : "None currently"}
+LATE STAGE ELSEWHERE: ${lateStageRoles.length > 0 ? lateStageRoles.map(j => `${j.company} (${j.stage})`).join(", ") : "None"}
+
+Return ONLY valid JSON, no markdown:
+{
+  "market_position": "One sentence on where this offer sits relative to what you're seeing across your pipeline",
+  "leverage": ["specific leverage point 1", "specific leverage point 2"],
+  "recommended_counter": "Specific counter offer or range with rationale in one sentence",
+  "negotiation_script": "2-3 sentences they can actually say on the call or in an email to open the negotiation",
+  "watch_out": "One thing to avoid in this specific negotiation",
+  "timing": "One sentence on when and how to respond to maximise leverage"
+}`
+          }]
+        })
+      })
+
+      const data = await res.json()
+      const text = data.content[0].text
+      const clean = text.replace(/```json|```/g, "").trim()
+      const parsed = JSON.parse(clean)
+      updateJob(job.id, { negotiation: parsed, negotiationDate: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }) })
+      setResult(parsed)
+    } catch (e) {
+      alert("Something went wrong. Try again.")
+      console.error(e)
+    }
+    setLoading(false)
+  }
+
+  if (result) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-[#8A8A8A]">{job.negotiationDate && `Generated ${job.negotiationDate}`}</p>
+          <button onClick={() => { setResult(null); updateJob(job.id, { negotiation: null }) }} className="text-xs text-[#C4C4BE] hover:text-[#8A8A8A] transition-colors">Clear</button>
+        </div>
+        <div className="bg-[#F7F7F5] rounded-lg p-3 border border-[#E8E8E4]">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-1">Market position</p>
+          <p className="text-xs text-[#333] leading-relaxed">{result.market_position}</p>
+        </div>
+        <div className="bg-[#F7F7F5] rounded-lg p-3 border border-[#E8E8E4]">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-2">Your leverage</p>
+          <div className="space-y-1.5">
+            {result.leverage?.map((l, i) => (
+              <div key={i} className="flex gap-2 text-xs text-[#333]">
+                <span className="text-green-500 shrink-0">↑</span>
+                <span>{l}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-green-600 mb-1">Recommended counter</p>
+          <p className="text-xs text-[#333] leading-relaxed font-medium">{result.recommended_counter}</p>
+        </div>
+        <div className="bg-[#111] rounded-lg p-4">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-[#8A8A8A] mb-2">What to say</p>
+          <p className="text-xs text-white leading-relaxed italic">"{result.negotiation_script}"</p>
+        </div>
+        <div className="bg-[#F7F7F5] rounded-lg p-3 border border-[#E8E8E4]">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-1">Timing</p>
+          <p className="text-xs text-[#333] leading-relaxed">{result.timing}</p>
+        </div>
+        <div className="bg-[#FDF1EF] border border-[#F5C9C4] rounded-lg p-3">
+          <p className="font-mono text-[9px] tracking-widest uppercase text-[#D63C2A] mb-1">Watch out</p>
+          <p className="text-xs text-[#555] leading-relaxed">{result.watch_out}</p>
+        </div>
+        <button onClick={runNegotiation} disabled={loading} className="text-xs text-[#8A8A8A] hover:text-[#111] transition-colors border border-[#E8E8E4] rounded-lg px-3 py-2 hover:border-[#111]">
+          ↺ Regenerate brief
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-xs text-[#8A8A8A] mb-3">Claude will analyse your full pipeline — salary signals, competing offers, late-stage interviews — and build a negotiation strategy tailored to your position.</p>
+      <button onClick={runNegotiation} disabled={loading} className="bg-green-600 text-white text-xs font-medium px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-40 transition-colors flex items-center gap-2">
+        {loading ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analysing pipeline…</> : "Generate negotiation brief"}
+      </button>
+    </div>
+  )
+}
 // ── Main App ───────────────────────────────────────────────────────────────
 function App() {
   const [jobs, setJobs] = useState(() => {
@@ -453,9 +582,12 @@ Return ONLY valid JSON:
     ? jobs.filter(j => j.stage === activeStage)
     : jobs.filter(j => j.stage !== "Closed")
 
-  const allFiltered = activeStage === "Closed"
-    ? jobs.filter(j => j.stage === "Closed")
-    : filtered
+  const FIT_ORDER = { "Strong fit": 0, "Good fit": 1, "Partial fit": 2, "Unclear": 3 }
+
+const allFiltered = (activeStage === "Closed"
+  ? jobs.filter(j => j.stage === "Closed")
+  : filtered
+).sort((a, b) => (FIT_ORDER[a.fitSignal] ?? 4) - (FIT_ORDER[b.fitSignal] ?? 4))
 
   const stageCounts = [...STAGES, "Closed"].reduce((acc, s) => {
     acc[s] = jobs.filter(j => j.stage === s).length
@@ -701,7 +833,16 @@ Return ONLY valid JSON:
                 <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE] mb-3">Interview debrief</p>
                 <DebriefPanel job={selectedJob} updateJob={updateJob} />
               </div>
-
+{/* NEGOTIATION SECTION */}
+{selectedJob.stage === "Offer" && (
+  <div className="border-t border-[#E8E8E4] pt-5 mb-5">
+    <div className="flex items-center gap-2 mb-3">
+      <p className="font-mono text-[9px] tracking-widest uppercase text-[#C4C4BE]">Negotiation intelligence</p>
+      <span className="text-[9px] font-mono bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full uppercase tracking-wide">Offer</span>
+    </div>
+    <NegotiationPanel job={selectedJob} allJobs={jobs} updateJob={updateJob} />
+  </div>
+)}
               {/* Email parser */}
               <div className="border-t border-[#E8E8E4] pt-5">
                 {!showEmailInput ? (
@@ -868,13 +1009,14 @@ Return ONLY valid JSON:
 
       {/* BRIEFING PANEL */}
       {briefingRole && (
-        <BriefingPanel
-          role={briefingRole}
-          onClose={() => setBriefingRole(null)}
-        />
-      )}
+  <BriefingPanel
+    role={briefingRole}
+    onClose={() => setBriefingRole(null)}
+    onSaveBriefing={(id, fields) => updateJob(id, fields)}
+  />
+)}
 
-    </div>
+</div>
   )
 }
 
