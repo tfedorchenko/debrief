@@ -34,7 +34,7 @@ export default function LandingPage({ onEnter }) {
           fontWeight: 800,
           letterSpacing: "-0.05em",
           color: "#111",
-          opacity: 0.018,
+          opacity: 0.028,
           userSelect: "none",
           pointerEvents: "none",
           top: "50%",

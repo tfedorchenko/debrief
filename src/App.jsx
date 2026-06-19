@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import BriefingPanel from "./components/BriefingPanel"
 import LandingPage from "./components/LandingPage"
+import Onboarding from "./components/Onboarding"
 
 const STORAGE_KEY = "debrief_jobs"
 const CV_STORAGE_KEY = "debrief_cv"
@@ -439,6 +440,8 @@ function App() {
   const [emailResult, setEmailResult] = useState(null)
   const [briefingRole, setBriefingRole] = useState(null)
   const [showLanding, setShowLanding] = useState(() => !localStorage.getItem("debrief_visited"))
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("debrief_onboarded"))
+
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
@@ -1040,14 +1043,26 @@ if (showLanding) {
 
       {/* BRIEFING PANEL */}
       {briefingRole && (
-  <BriefingPanel
-    role={briefingRole}
-    onClose={() => setBriefingRole(null)}
-    onSaveBriefing={(id, fields) => updateJob(id, fields)}
-  />
-)}
+<BriefingPanel
+        role={briefingRole}
+        onClose={() => setBriefingRole(null)}
+        onSaveBriefing={(id, fields) => updateJob(id, fields)}
+      />
+    )}
 
-</div>
+    {showOnboarding && (
+      <Onboarding
+        onComplete={() => { 
+  localStorage.setItem("debrief_onboarded", "true"); 
+  setShowOnboarding(false)
+  if (!cvText) setShowProfile(true)
+}}
+        onOpenProfile={() => { setShowProfile(true) }}
+        onAddRole={() => { setShowModal(true) }}
+      />
+    )}
+
+    </div>
   )
 }
 
