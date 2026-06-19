@@ -800,7 +800,31 @@ if (showLanding) {
                 <EditableField label="Location" value={selectedJob.location} onChange={val => updateJob(selectedJob.id, { location: val })} placeholder="Not specified" />
                 <EditableField label="Job URL" value={selectedJob.url} onChange={val => updateJob(selectedJob.id, { url: val })} placeholder="Paste link" />
               </div>
+{/* Interview date + interviewer */}
+<div className="grid grid-cols-3 gap-5 mb-5">
+  <EditableField label="Interview date" value={selectedJob.interviewDate} onChange={val => updateJob(selectedJob.id, { interviewDate: val })} placeholder="e.g. 20 Jun" />
+  <EditableField label="Interviewer name" value={selectedJob.interviewerName} onChange={val => updateJob(selectedJob.id, { interviewerName: val })} placeholder="e.g. Sarah Chen" />
+  <EditableField label="Interviewer title" value={selectedJob.interviewerTitle} onChange={val => updateJob(selectedJob.id, { interviewerTitle: val })} placeholder="e.g. VP Product" />
+</div>
 
+{/* Interview prompt */}
+{selectedJob.interviewDate && (
+  <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-5">
+    <div className="flex items-center gap-2">
+      <span className="text-amber-500">◆</span>
+      <span className="text-xs text-[#333]">
+        Interview on <span className="font-medium">{selectedJob.interviewDate}</span>
+        {selectedJob.interviewerName && <> with <span className="font-medium">{selectedJob.interviewerName}</span></>}
+      </span>
+    </div>
+    <button
+      onClick={() => setBriefingRole(selectedJob)}
+      className="text-xs font-medium text-[#D63C2A] hover:underline"
+    >
+      Run your brief →
+    </button>
+  </div>
+)}
               {/* Fit signal */}
               {selectedJob.fitSignal && (
                 <div className="flex items-start gap-3 bg-[#F7F7F5] rounded-lg p-3 mb-5">
