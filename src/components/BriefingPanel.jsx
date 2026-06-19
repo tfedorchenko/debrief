@@ -1,8 +1,9 @@
 import { useState } from "react";
 
 export default function BriefingPanel({ role, onClose, onSaveBriefing }) {
-  const [briefing, setBriefing] = useState(role.briefing || null);
-  const [sources, setSources] = useState(role.briefingSources || []);
+ const stageBrief = role.briefings?.[role.stage] || null
+ const [briefing, setBriefing] = useState(stageBrief?.briefing || null)
+ const [sources, setSources] = useState(stageBrief?.sources || [])
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [interviewerName, setInterviewerName] = useState(role.briefingInterviewer?.name || "");
@@ -17,12 +18,21 @@ export default function BriefingPanel({ role, onClose, onSaveBriefing }) {
     const interviewerSection = interviewerName.trim()
       ? `Interviewer: ${interviewerName.trim()}${interviewerTitle ? `, ${interviewerTitle}` : ""} at ${role.company}`
       : `No interviewer name provided — skip the interviewer section and mark it as "Add interviewer name for personalised intel."`;
-
+const debriefContext = role.debrief
+  ? `\nPrevious interview debrief for this role:
+Score: ${role.debrief.score}/10
+Went well: ${role.debrief.wentWell?.join(", ")}
+Improve: ${role.debrief.improve?.join(", ")}
+Role signal: ${role.debrief.roleSignal || "none"}
+Use this to inform the talking points and watch out — help them improve on what didn't land.`
+  : ""
     const prompt = `You are a career strategist preparing a PM for an interview. Be concise — every field max 1-2 sentences or 2 bullets.
 
 Company: ${role.company}
 Role: ${role.role || role.title || "Product Manager"}
 ${interviewerSection}
+
+${debriefContext}
 
 Search the web for recent news and context. Return ONLY a JSON object, no markdown:
 {
@@ -111,12 +121,11 @@ Search the web for recent news and context. Return ONLY a JSON object, no markdo
 
       // Persist to job object
       if (onSaveBriefing) {
-        onSaveBriefing(role.id, {
-          briefing: parsed,
-          briefingSources: extractedSources,
-          briefingInterviewer: { name: interviewerName, title: interviewerTitle },
-          briefingDate: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-        });
+     const stage = role.stage || "Applied"
+    onSaveBriefing(role.id, {
+    briefings: { ...role.briefings, [stage]: { briefing: parsed, sources: extractedSources, date: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }) } },
+    briefingInterviewer: { name: interviewerName, title: interviewerTitle },
+})
       }
     } catch (err) {
       setError("Couldn't generate briefing. " + err.message);
@@ -126,18 +135,15 @@ Search the web for recent news and context. Return ONLY a JSON object, no markdo
   };
 
   const clearBriefing = () => {
-    setBriefing(null);
-    setSources([]);
-    setError(null);
-    if (onSaveBriefing) {
-      onSaveBriefing(role.id, {
-        briefing: null,
-        briefingSources: [],
-        briefingInterviewer: null,
-        briefingDate: null,
-      });
-    }
-  };
+  setBriefing(null)
+  setSources([])
+  setError(null)
+  if (onSaveBriefing) {
+    const updatedBriefings = { ...role.briefings }
+    delete updatedBriefings[role.stage]
+    onSaveBriefing(role.id, { briefings: updatedBriefings })
+  }
+}
 
   const initials = (role.company || "?")
     .split(" ")
@@ -161,7 +167,7 @@ Search the web for recent news and context. Return ONLY a JSON object, no markdo
               <div className="text-sm font-semibold text-[#111]">{role.company}</div>
               <div className="text-xs text-[#8A8A8A] font-mono">
                 Pre-interview briefing
-                {role.briefingDate && <span className="ml-2">· {role.briefingDate}</span>}
+                {stageBrief?.date && <span className="ml-2">· {role.stage} brief · {stageBrief.date}</span>}
               </div>
             </div>
           </div>
