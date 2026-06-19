@@ -140,6 +140,18 @@ Return ONLY valid JSON — no preamble, no markdown:
         transcriptSnippet: transcriptText.slice(0, 200) + "…",
         debriefDate: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
       })
+      typeof pendo !== "undefined" && pendo.track("interview_debrief_completed", {
+        company: job.company,
+        role: job.role,
+        stage: job.stage,
+        score: result.score,
+        wentWellCount: result.wentWell?.length || 0,
+        improveCount: result.improve?.length || 0,
+        hasSalarySignal: Boolean(result.salarySignal),
+        hasRoleSignal: Boolean(result.roleSignal),
+        suggestedStage: result.suggestedStage || "",
+        transcriptLength: transcriptText.length
+      })
       setShowTranscript(false)
       setTranscriptText("")
     } catch (e) {
@@ -376,6 +388,17 @@ ${jobText}${cvContext}`
       setJobs(prev => [newJob, ...prev])
       setShowModal(false)
       setJobText("")
+      typeof pendo !== "undefined" && pendo.track("role_extracted", {
+        company: newJob.company,
+        role: newJob.role,
+        type: newJob.type,
+        location: newJob.location,
+        salary: newJob.salary || "",
+        fitSignal: newJob.fitSignal || "",
+        fitReason: newJob.fitReason || "",
+        hasCvLoaded: Boolean(cvText),
+        jobTextLength: jobText.length
+      })
     } catch (e) {
       alert("Something went wrong extracting the job. Try again.")
       console.error(e)
@@ -384,11 +407,32 @@ ${jobText}${cvContext}`
   }
 
   function deleteJob(id) {
+    const job = jobs.find(j => j.id === id)
+    if (job) {
+      typeof pendo !== "undefined" && pendo.track("role_deleted", {
+        company: job.company,
+        role: job.role,
+        stage: job.stage,
+        hadDebrief: Boolean(job.debrief),
+        hadBriefing: false,
+        daysSinceAdded: typeof job.id === "number" ? Math.floor((Date.now() - job.id) / 86400000) : null
+      })
+    }
     setJobs(prev => prev.filter(j => j.id !== id))
     if (selectedJob?.id === id) setSelectedJob(null)
   }
 
   function closeRole(id) {
+    const job = jobs.find(j => j.id === id)
+    if (job) {
+      typeof pendo !== "undefined" && pendo.track("role_closed", {
+        company: job.company,
+        role: job.role,
+        previousStage: job.stage,
+        hadDebrief: Boolean(job.debrief),
+        daysSinceAdded: typeof job.id === "number" ? Math.floor((Date.now() - job.id) / 86400000) : null
+      })
+    }
     updateJob(id, { stage: "Closed" })
     setSelectedJob(null)
   }
@@ -427,7 +471,17 @@ Return ONLY valid JSON:
       const data = await res.json()
       const text = data.content[0].text
       const clean = text.replace(/```json|```/g, "").trim()
-      setEmailResult(JSON.parse(clean))
+      const parsed = JSON.parse(clean)
+      setEmailResult(parsed)
+      typeof pendo !== "undefined" && pendo.track("email_parsed", {
+        company: job.company,
+        role: job.role,
+        currentStage: job.stage,
+        suggestedStage: parsed.suggestedStage || "",
+        reason: parsed.reason || "",
+        hasSignals: Boolean(parsed.signals),
+        emailTextLength: emailText.length
+      })
     } catch (e) {
       alert("Something went wrong parsing the email. Try again.")
       console.error(e)
@@ -444,6 +498,14 @@ Return ONLY valid JSON:
       updates.userNotes = existing + `Email signals (${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}):\n${emailResult.signals}`
     }
     updateJob(job.id, updates)
+    typeof pendo !== "undefined" && pendo.track("email_update_applied", {
+      company: job.company,
+      role: job.role,
+      previousStage: job.stage,
+      newStage: emailResult.suggestedStage || job.stage,
+      hasSignals: Boolean(emailResult.signals),
+      stageChanged: Boolean(emailResult.suggestedStage && emailResult.suggestedStage !== job.stage)
+    })
     setShowEmailInput(false)
     setEmailText("")
     setEmailResult(null)
@@ -645,7 +707,17 @@ Return ONLY valid JSON:
                     {STAGES.map(s => (
                       <button
                         key={s}
-                        onClick={() => updateJob(selectedJob.id, { stage: s })}
+                        onClick={() => {
+                          if (selectedJob.stage !== s) {
+                            typeof pendo !== "undefined" && pendo.track("role_stage_changed", {
+                              company: selectedJob.company,
+                              role: selectedJob.role,
+                              previousStage: selectedJob.stage,
+                              newStage: s
+                            })
+                          }
+                          updateJob(selectedJob.id, { stage: s })
+                        }}
                         className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedJob.stage === s ? "bg-[#111] text-white border-[#111]" : "border-[#E8E8E4] text-[#8A8A8A] hover:border-[#111] hover:text-[#111]"}`}
                       >
                         {s}
@@ -845,7 +917,14 @@ Return ONLY valid JSON:
             </div>
             <div className="px-6 pb-6 flex justify-between items-center">
               {cvText && (
-                <button onClick={() => { setCvText(""); setCvDraft(""); setShowProfile(false) }} className="text-xs text-[#8A8A8A] hover:text-red-400 transition-colors">
+                <button onClick={() => {
+                  typeof pendo !== "undefined" && pendo.track("profile_cleared", {
+                    previousCvLength: cvText.length
+                  })
+                  setCvText("")
+                  setCvDraft("")
+                  setShowProfile(false)
+                }} className="text-xs text-[#8A8A8A] hover:text-red-400 transition-colors">
                   Clear CV
                 </button>
               )}
@@ -854,7 +933,14 @@ Return ONLY valid JSON:
                   Cancel
                 </button>
                 <button
-                  onClick={() => { setCvText(cvDraft); setShowProfile(false) }}
+                  onClick={() => {
+                    typeof pendo !== "undefined" && pendo.track("profile_saved", {
+                      cvLength: cvDraft.length,
+                      isUpdate: Boolean(cvText)
+                    })
+                    setCvText(cvDraft)
+                    setShowProfile(false)
+                  }}
                   disabled={!cvDraft.trim()}
                   className="bg-[#111] text-white text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#333] disabled:opacity-40 transition-colors"
                 >

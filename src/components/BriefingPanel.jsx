@@ -85,6 +85,14 @@ Search the web for recent news and context. Return ONLY a JSON object, no markdo
 if (!jsonMatch) throw new Error("No JSON found in response");
 const parsed = JSON.parse(jsonMatch[0]);
       setBriefing(parsed);
+      typeof pendo !== "undefined" && pendo.track("interview_briefing_generated", {
+        company: role.company,
+        role: role.role || role.title || "",
+        hasInterviewerName: Boolean(interviewerName.trim()),
+        hasInterviewerTitle: Boolean(interviewerTitle.trim()),
+        talkingPointsCount: parsed.talking_points?.length || 0,
+        hasInterviewerIntel: Boolean(parsed.interviewer && parsed.interviewer.name !== "Unknown")
+      });
     } catch (err) {
       setError("Couldn't generate briefing. " + err.message);
     } finally {
