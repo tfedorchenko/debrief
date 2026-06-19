@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import BriefingPanel from "./components/BriefingPanel"
+import LandingPage from "./components/LandingPage"
 
 const STORAGE_KEY = "debrief_jobs"
 const CV_STORAGE_KEY = "debrief_cv"
@@ -437,6 +438,7 @@ function App() {
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailResult, setEmailResult] = useState(null)
   const [briefingRole, setBriefingRole] = useState(null)
+  const [showLanding, setShowLanding] = useState(() => !localStorage.getItem("debrief_visited"))
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs))
@@ -593,7 +595,12 @@ const allFiltered = (activeStage === "Closed"
     acc[s] = jobs.filter(j => j.stage === s).length
     return acc
   }, {})
-
+if (showLanding) {
+  return <LandingPage onEnter={() => {
+    localStorage.setItem("debrief_visited", "true")
+    setShowLanding(false)
+  }} />
+}
   return (
     <div className="min-h-screen bg-[#F7F7F5] font-sans" style={{ fontFamily: "'Inter', sans-serif" }}>
 
